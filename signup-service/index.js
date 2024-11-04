@@ -3,56 +3,59 @@ const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 const dotenv = require("dotenv");
 const User = require("./models/User");
-const connectDB = require("./config/db");
+const amqp = require("amqplib");
 const client = require("prom-client");
 
 dotenv.config();
-connectDB();
+mongoose.connect(process.env.MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true });
 
 const app = express();
 app.use(express.json());
 
-// Initialize Prometheus metrics
 const register = new client.Registry();
-const httpRequestDurationMicroseconds = new client.Histogram({
-  name: 'http_request_duration_ms',
-  help: 'Duration of HTTP requests in ms',
-  labelNames: ['method', 'route', 'status_code'],
-  buckets: [50, 100, 300, 500, 1000, 3000]  // Adjust buckets based on expected latency
-});
-register.registerMetric(httpRequestDurationMicroseconds);
 client.collectDefaultMetrics({ register });
 
-// Monitoring endpoint for Prometheus
-app.get("/metrics", async (req, res) => {
+// Define a /metrics endpoint
+app.get('/metrics', async (req, res) => {
   res.set("Content-Type", register.contentType);
   res.end(await register.metrics());
 });
 
+// Publish message to RabbitMQ
+async function publishMessage(queue, message) {
+    const connection = await amqp.connect(process.env.RABBITMQ_URL);
+    const channel = await connection.createChannel();
+    await channel.assertQueue(queue);
+    channel.sendToQueue(queue, Buffer.from(JSON.stringify(message)));
+    console.log("Message sent to queue:", message);
+    await channel.close();
+    await connection.close();
+}
+
 // Signup endpoint
 app.post("/api/signup", async (req, res) => {
-  const end = httpRequestDurationMicroseconds.startTimer();
-  const { email, password } = req.body;
+    const { email, password } = req.body;
 
-  try {
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      end({ route: "/api/signup", method: req.method, status_code: 400 });
-      return res.status(400).json({ message: "User already exists" });
+    try {
+        const hashedPassword = await bcrypt.hash(password, 10);
+        const user = new User({ email, password: hashedPassword });
+        const savedUser = await user.save();
+
+        // Publish signup event to orchestration_queue
+        if (savedUser) {
+            await publishMessage("orchestration_queue", { type: "signup", email });
+            console.log("User registered and message sent to orchestration service.");
+            res.status(201).send("User registered successfully");
+        } else {
+            res.status(500).send("Failed to register user");
+        }
+    } catch (error) {
+        console.error("Error during signup:", error);
+        res.status(400).send("Error registering user");
     }
-
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-    const newUser = new User({ email, password: hashedPassword });
-    await newUser.save();
-
-    end({ route: "/api/signup", method: req.method, status_code: 201 });
-    res.status(201).json({ message: "User registered successfully" });
-  } catch (error) {
-    end({ route: "/api/signup", method: req.method, status_code: 500 });
-    res.status(500).json({ error: error.message });
-  }
 });
 
 const PORT = process.env.PORT || 5002;
-app.listen(PORT, () => console.log(`Signup Service running on port ${PORT}`));
+app.listen(PORT, () => {
+    console.log(`Signup service running on port ${PORT}`);
+});

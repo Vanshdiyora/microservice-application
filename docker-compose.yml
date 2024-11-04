@@ -1,27 +1,53 @@
 version: '3.8'
 
 services:
-  nginx:
-    image: nginx:latest
+
+  rabbitmq:
+    image: rabbitmq:3-management
     ports:
-      - "80:80"
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf
-    depends_on:
-      - login-service
-      - signup-service
+      - "5672:5672"
+      - "15672:15672"
     networks:
       - microservices-network
 
   login-service:
-    build:
-      context: ./login-service
+    build: ./login-service
+    environment:
+      - RABBITMQ_URL=amqp://rabbitmq
+    depends_on:
+      - rabbitmq
     networks:
       - microservices-network
 
   signup-service:
-    build:
-      context: ./signup-service
+    build: ./signup-service
+    environment:
+      - RABBITMQ_URL=amqp://rabbitmq
+    depends_on:
+      - rabbitmq
+    networks:
+      - microservices-network
+  orchestration-service:
+    build: ./orchestration-service
+    environment:
+      RABBITMQ_URL: amqp://rabbitmq
+    ports:
+      - "5005:5005"
+    networks:
+      - microservices-network
+    labels:
+      - "monitoring=true"
+
+  nginx:
+    image: nginx:latest
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+    ports:
+      - "80:80"
+    depends_on:
+      - signup-service
+      - login-service
+      - orchestration-service
     networks:
       - microservices-network
 

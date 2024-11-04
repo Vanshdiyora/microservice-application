@@ -1,2 +1,4 @@
 /login-service/node_modules
 /signup-service/node_modules
+/login-service/.env
+/signup-service/.env

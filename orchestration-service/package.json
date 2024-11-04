@@ -1,0 +1,20 @@
+{
+    "name": "orchestration-service",
+    "version": "1.0.0",
+    "description": "Orchestration service to coordinate tasks across other microservices",
+    "main": "src/server.js",
+    "scripts": {
+      "start": "node src/server.js",
+      "dev": "nodemon src/server.js"
+    },
+    "dependencies": {
+      "express": "^4.17.1",
+      "amqplib": "^0.8.0"
+    },
+    "devDependencies": {
+      "nodemon": "^2.0.15"
+    },
+    "author": "Your Name",
+    "license": "ISC"
+  }
+  

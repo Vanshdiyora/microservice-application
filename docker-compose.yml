@@ -27,10 +27,11 @@ services:
       - rabbitmq
     networks:
       - microservices-network
+
   orchestration-service:
     build: ./orchestration-service
     environment:
-      RABBITMQ_URL: amqp://rabbitmq
+      - RABBITMQ_URL=amqp://rabbitmq
     ports:
       - "5005:5005"
     networks:
@@ -66,6 +67,13 @@ services:
       - "3000:3000"
     depends_on:
       - prometheus
+    networks:
+      - microservices-network
+
+  node-exporter:
+    image: prom/node-exporter
+    ports:
+      - "9100:9100"
     networks:
       - microservices-network
 
